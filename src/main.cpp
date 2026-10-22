@@ -5,6 +5,7 @@
 #include <psp2/touch.h>
 #include <psp2kern/bt.h>
 #include <psp2kern/ctrl.h>
+#include <psp2kern/kernel/iofilemgr.h>
 #include <psp2kern/kernel/modulemgr.h>
 #include <psp2kern/kernel/suspend.h>
 #include <psp2kern/kernel/threadmgr.h>
@@ -55,6 +56,51 @@ static SceUID eventFlagUid = -1;
 static SceUID threadUid = -1;
 
 static Controller *controllers[MAX_CONTROLLERS] = {};
+
+static void logDeviceInfo(uint32_t mac0, uint32_t mac1)
+{
+    // Record every accepted Bluetooth device. This identifies the controller
+    // even if its VID/PID is not one of the supported combinations.
+    uint16_t id[2] = {};
+    char name[0x79] = {};
+    ksceBtGetVidPid(mac0, mac1, id);
+    ksceBtGetDeviceName(mac0, mac1, name);
+
+    static const char hex[] = "0123456789ABCDEF";
+    char line[192];
+    int pos = 0;
+
+    const char *prefix = "DEVICE VID=";
+    while (*prefix) line[pos++] = *prefix++;
+    line[pos++] = hex[(id[0] >> 12) & 0xF];
+    line[pos++] = hex[(id[0] >> 8) & 0xF];
+    line[pos++] = hex[(id[0] >> 4) & 0xF];
+    line[pos++] = hex[id[0] & 0xF];
+
+    const char *pidText = " PID=";
+    while (*pidText) line[pos++] = *pidText++;
+    line[pos++] = hex[(id[1] >> 12) & 0xF];
+    line[pos++] = hex[(id[1] >> 8) & 0xF];
+    line[pos++] = hex[(id[1] >> 4) & 0xF];
+    line[pos++] = hex[id[1] & 0xF];
+
+    const char *nameText = " NAME=";
+    while (*nameText) line[pos++] = *nameText++;
+    for (int i = 0; i < 64 && name[i]; i++)
+    {
+        unsigned char c = (unsigned char)name[i];
+        line[pos++] = (c >= 0x20 && c <= 0x7E) ? (char)c : '?';
+    }
+    line[pos++] = '\n';
+
+    SceUID fd = ksceIoOpen("ux0:data/vitacontrol-8bitdo.log",
+        SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0666);
+    if (fd >= 0)
+    {
+        ksceIoWrite(fd, line, pos);
+        ksceIoClose(fd);
+    }
+}
 
 static inline int clamp(int value, int min, int max)
 {
@@ -120,13 +166,26 @@ static void patchControlData(int port, SceCtrlData *data, int count, bool negati
     int cont = (port > 0) ? (port - 1) : 0;
     if (!controllers[cont]) return;
     const ControlData *controlData = controllers[cont]->getControlData();
+    uint32_t buttons = controlData->buttons;
 
     // Forward PS button presses to the kernel so the system menu receives them
-    if (controlData->buttons & SCE_CTRL_PSBUTTON)
+    if (buttons & SCE_CTRL_PSBUTTON)
+    {
         ksceCtrlSetButtonEmulation(port, 0, 0, SCE_CTRL_PSBUTTON, 16);
+        buttons &= ~SCE_CTRL_PSBUTTON;
+    }
 
     for (int i = 0; i < count; i++)
     {
+        // Negative APIs report pressed/intercepted buttons as cleared bits.
+        const bool intercepted = negative
+            ? (data[i].buttons & SCE_CTRL_INTERCEPTED) == 0
+            : (data[i].buttons & SCE_CTRL_INTERCEPTED) != 0;
+
+        // Respect inputs consumed by higher-priority UI like the Home/Settings overlays.
+        if (intercepted)
+            continue;
+
         // Reset initial values for controller ports (port 0 is additive)
         if (port > 0)
         {
@@ -137,9 +196,9 @@ static void patchControlData(int port, SceCtrlData *data, int count, bool negati
         // Set the button data from the controller, with optional negative logic
         // TODO: properly handle extended/analog triggers
         if (negative)
-            data[i].buttons &= ~controlData->buttons;
+            data[i].buttons &= ~buttons;
         else
-            data[i].buttons |= controlData->buttons;
+            data[i].buttons |= buttons;
 
         // Set the stick data from the controller
         data[i].lx = clamp(data[i].lx + controlData->leftX  - 127, 0, 255);
@@ -280,9 +339,18 @@ static int bluetoothCallback(int notifyId, int notifyCount, int notifyArg, void 
     switch (event.id)
     {
         case 0x05: // Connection accepted
+            // Log the device identity for diagnostics
+            logDeviceInfo(event.mac0, event.mac1);
+
             // Try to create a controller instance for the device
             if (!controllers[cont])
+            {
                 controllers[cont] = Controller::makeController(event.mac0, event.mac1, cont);
+
+                // Start the controller's input request chain
+                if (controllers[cont])
+                    controllers[cont]->start(buffer, sizeof(buffer));
+            }
             break;
 
         case 0x06: // Connection terminated

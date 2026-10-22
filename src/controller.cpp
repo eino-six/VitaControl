@@ -15,11 +15,50 @@ inline void* operator new(std::size_t, void* __p) throw() { return __p; }
 #define DECL_CONTROLLER(vid, pid, name) \
     case ((vid) << 16) | (pid): return new(Mempool::alloc(sizeof(name))) name(mac0, mac1, port)
 
+static bool nameContains(const char *name, size_t length, const char *needle)
+{
+    for (size_t i = 0; i < length && name[i]; i++)
+    {
+        size_t j = 0;
+        while (needle[j] && i + j < length && name[i + j])
+        {
+            char c = name[i + j];
+            if (c >= 'A' && c <= 'Z')
+                c += 'a' - 'A';
+            if (c != needle[j])
+                break;
+            j++;
+        }
+        if (!needle[j])
+            return true;
+    }
+    return false;
+}
+
 Controller *Controller::makeController(uint32_t mac0, uint32_t mac1, int port)
 {
     // Get the VID and PID of the device with the given MAC address
     uint16_t id[2];
     ksceBtGetVidPid(mac0, mac1, id);
+
+    // Get the device name too. Some 8BitDo modes can spoof another vendor's
+    // VID/PID, so the name is a useful fallback for choosing the driver.
+    char deviceName[0x79] = {};
+    ksceBtGetDeviceName(mac0, mac1, deviceName);
+
+    // A genuine Switch Pro identity must always use the Switch driver, even
+    // if the name happens to contain "8BitDo" or "Ultimate".
+    if (id[0] == 0x057E && id[1] == 0x2009)
+        return new(Mempool::alloc(sizeof(SwitchProController))) SwitchProController(mac0, mac1, port, true);
+
+    // 8BitDo's own VID is used in DirectInput mode (including the Ultimate
+    // 2.4G's Bluetooth mode). There is no fixed PID to match here because the
+    // same controller can report different PIDs depending on firmware/mode.
+    // Fall back to the name for units that spoof a different VID over BT.
+    if (id[0] == 0x2DC8 ||
+        nameContains(deviceName, sizeof(deviceName), "8bitdo") ||
+        nameContains(deviceName, sizeof(deviceName), "ultimate"))
+        return new(Mempool::alloc(sizeof(SwitchProController))) SwitchProController(mac0, mac1, port, false);
 
     // Match the VID and PID to a controller type, and create one if it exists
     switch ((id[0] << 16) | id[1])
@@ -34,7 +73,6 @@ Controller *Controller::makeController(uint32_t mac0, uint32_t mac1, int port)
         DECL_CONTROLLER(0x045E, 0x0B00, XboxOneController);
         DECL_CONTROLLER(0x045E, 0x0B05, XboxOneController);
         DECL_CONTROLLER(0x045E, 0x0B0A, XboxOneController);
-        DECL_CONTROLLER(0x057E, 0x2009, SwitchProController);
     }
 
     return nullptr;

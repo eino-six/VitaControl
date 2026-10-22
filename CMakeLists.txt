@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   if(DEFINED ENV{VITASDK})
@@ -27,6 +27,7 @@ add_executable(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
   SceBtForDriver_stub
   SceCtrlForDriver_stub
+  SceIofilemgrForDriver_stub
   SceKernelSuspendForDriver_stub
   SceSysclibForDriver_stub
   SceSysmemForDriver_stub
