@@ -1,4 +1,4 @@
-#include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <taihen.h>
 #include <psp2/motion.h>

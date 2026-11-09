@@ -54,7 +54,27 @@ Legacy:   buttons0 buttons1 hat LX LY RX RY ...
 
 The parser also accepts the enhanced layout if the host strips the report ID.
 It maps the D-pad, both sticks, face buttons, shoulders, Start/Select, L3/R3,
-PS/Home, and digital L2/R2 triggers.
+PS/Home, and digital L2/R2 triggers. The DirectInput face-button order is
+corrected so physical X reports Triangle and physical Y reports Square.
+
+### Button remapping
+
+Create `ux0:data/vitacontrol-8bitdo.cfg` to remap parsed buttons. It is loaded
+when the controller connects. For example, to make the physical L1 bumper act
+as Vita L2 in Adrenaline:
+
+```text
+# ux0:data/vitacontrol-8bitdo.cfg
+map L1 L2
+```
+
+Supported names: `CROSS`, `CIRCLE`, `SQUARE`, `TRIANGLE`, `L1`, `R1`, `L2`,
+`R2`, `L3`, `R3`, `SELECT`, `START`, `PS`, `UP`, `DOWN`, `LEFT`, `RIGHT`,
+`EXT1`. Names are case-insensitive, `#` starts a comment, and up to 16
+mappings are read. A mapping moves the button; add both directions to swap
+them. The mapping applies in every app while the controller is connected;
+delete or rename the file to restore the default buttons. See
+[INSTALL.md](INSTALL.md) for details.
 
 The fork also writes a diagnostic log to `ux0:data/vitacontrol-8bitdo.log` with
 the device VID/PID/name, the detected report layout, and the first 200 distinct

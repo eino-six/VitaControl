@@ -4,8 +4,8 @@ VitaControl for 8BitDo Ultimate controllers (PS Vita)
 PRIMARY BUILD
 -------------
 File: vitacontrol.skprx
-Size: 13328 bytes
-SHA-256: 3D4350760712DEDC13148F0122157B9950777E3DE5E792E7B19FA625DB33C9DA
+Size: 14812 bytes
+SHA-256: 654956D1D242C57AABC6EF8CBAEBF9D52DB989DAEB5B813A0399C36043D5D45A
 
 Tested on a physical 8BitDo Ultimate 2.4G over Bluetooth. This build
 supports BOTH:
@@ -15,9 +15,31 @@ supports BOTH:
   2. 8BitDo DirectInput mode (VID 2DC8, or a device name containing
      "8BitDo"/"Ultimate"), including the Ultimate 2.4G over Bluetooth.
 
+Changes in this build:
+
+  - Fixed the inverted X/Y face buttons on the DirectInput path.
+    Physical X now reports Triangle and physical Y reports Square.
+  - Added optional button remapping through ux0:data/vitacontrol-8bitdo.cfg.
+
 It also writes a diagnostic log:
 
   ux0:data/vitacontrol-8bitdo.log
+
+BUTTON REMAPPING
+----------------
+Create ux0:data/vitacontrol-8bitdo.cfg. Each line moves one button to another.
+For example, to make the physical L1 bumper act as Vita L2 in Adrenaline:
+
+  # ux0:data/vitacontrol-8bitdo.cfg
+  map L1 L2
+
+Supported names: CROSS, CIRCLE, SQUARE, TRIANGLE, L1, R1, L2, R2, L3, R3,
+SELECT, START, PS, UP, DOWN, LEFT, RIGHT, EXT1. Names are case-insensitive,
+'#' starts a comment, and up to 16 mappings are read. A mapping moves the
+button, so add both directions to swap two buttons. The file is loaded when
+the controller connects; reconnect it after editing the file. The mapping
+applies in every app while the controller is connected; delete or rename the
+file to restore the default buttons.
 
 SWITCH-ONLY FALLBACK
 --------------------

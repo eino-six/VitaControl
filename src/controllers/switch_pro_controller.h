@@ -91,15 +91,27 @@ class SwitchProController: public Controller
         void processReport(uint8_t *buffer, size_t length);
 
     private:
+        struct ButtonRemap
+        {
+            uint32_t from;
+            uint32_t to;
+        };
+
+        enum { MAX_REMAPS = 16 };
+
         void processStandardReport(uint8_t *buffer, size_t length);
         void processSimpleReport(uint8_t *buffer, size_t length);
         void processDirectInputReport(uint8_t *buffer, size_t length);
+        void loadRemapConfig();
+        void applyRemap();
         void logReport(uint8_t *buffer);
 
         bool switchMode;
         int layout = -1;
         int logCount = 0;
         uint8_t lastLogged[16] = {};
+        ButtonRemap remaps[MAX_REMAPS] = {};
+        int remapCount = 0;
 };
 
 #endif // SWITCH_PRO_CONTROLLER_H

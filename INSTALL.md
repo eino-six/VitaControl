@@ -13,7 +13,7 @@ the top level of the extracted folder.
 Primary build SHA-256:
 
 ```
-3D4350760712DEDC13148F0122157B9950777E3DE5E792E7B19FA625DB33C9DA
+654956D1D242C57AABC6EF8CBAEBF9D52DB989DAEB5B813A0399C36043D5D45A
 ```
 
 ---
@@ -163,7 +163,38 @@ They are not required for normal controls.
 
 ---
 
-## 5. If it still does not work
+## 5. Optional: remap buttons
+
+Create `ux0:data/vitacontrol-8bitdo.cfg` to change which Vita button a
+controller button reports. Each line moves one button to another. For example,
+to make the physical **L1** bumper act as **L2** in Adrenaline:
+
+```
+# ux0:data/vitacontrol-8bitdo.cfg
+map L1 L2
+```
+
+Supported button names are `CROSS`, `CIRCLE`, `SQUARE`, `TRIANGLE`, `L1`,
+`R1`, `L2`, `R2`, `L3`, `R3`, `SELECT`, `START`, `PS`, `UP`, `DOWN`, `LEFT`,
+`RIGHT`, and `EXT1`. Names are case-insensitive, `#` starts a comment, and up
+to 16 mappings are read.
+
+A mapping **moves** the button: with `map L1 L2`, physical L1 reports L2 and no
+longer reports L1. To swap two buttons, add both directions:
+
+```
+map L1 L2
+map L2 L1
+```
+
+The file is loaded when the controller connects, so reconnect the controller
+after editing it. It works for both the Switch Pro and DirectInput paths used
+by the 8BitDo driver. The mapping applies in every app while the controller is
+connected; delete or rename the file to restore the default buttons.
+
+---
+
+## 6. If it still does not work
 
 ### Read the diagnostic log
 
@@ -239,6 +270,9 @@ Compared with upstream VitaControl, the primary build adds:
 - `0x21` subcommand reply handling (some 8BitDo pads send this instead of
   switching to `0x30` reports).
 - 8BitDo DirectInput report parsing for the Ultimate 2.4G over Bluetooth.
+- Corrected X/Y face-button order on the DirectInput path (physical X reports
+  Triangle, physical Y reports Square).
+- Optional button remapping through `ux0:data/vitacontrol-8bitdo.cfg`.
 - A `start()` hook so a DirectInput controller begins its read chain without a
   Switch-mode init write.
 - 8BitDo VID/name matching so the Bluetooth PID does not have to be known.

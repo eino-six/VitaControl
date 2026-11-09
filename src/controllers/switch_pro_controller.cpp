@@ -5,6 +5,64 @@
 
 #include "switch_pro_controller.h"
 
+namespace
+{
+struct ButtonName
+{
+    const char *name;
+    uint32_t mask;
+};
+
+const ButtonName buttonNames[] =
+{
+    { "CROSS",    SCE_CTRL_CROSS },
+    { "CIRCLE",   SCE_CTRL_CIRCLE },
+    { "SQUARE",   SCE_CTRL_SQUARE },
+    { "TRIANGLE", SCE_CTRL_TRIANGLE },
+    { "L1",       SCE_CTRL_L1 },
+    { "R1",       SCE_CTRL_R1 },
+    { "L2",       SCE_CTRL_LTRIGGER },
+    { "R2",       SCE_CTRL_RTRIGGER },
+    { "L3",       SCE_CTRL_L3 },
+    { "R3",       SCE_CTRL_R3 },
+    { "SELECT",   SCE_CTRL_SELECT },
+    { "START",    SCE_CTRL_START },
+    { "PS",       SCE_CTRL_PSBUTTON },
+    { "UP",       SCE_CTRL_UP },
+    { "DOWN",     SCE_CTRL_DOWN },
+    { "LEFT",     SCE_CTRL_LEFT },
+    { "RIGHT",    SCE_CTRL_RIGHT },
+    { "EXT1",     SCE_CTRL_EXT1 },
+};
+
+bool tokenEquals(const char *token, size_t length, const char *name)
+{
+    size_t i = 0;
+    for (; i < length && name[i]; i++)
+    {
+        char a = token[i];
+        char b = name[i];
+        if (a >= 'a' && a <= 'z') a -= 'a' - 'A';
+        if (b >= 'a' && b <= 'z') b -= 'a' - 'A';
+        if (a != b)
+            return false;
+    }
+
+    return i == length && name[i] == '\0';
+}
+
+uint32_t buttonMaskFromName(const char *token, size_t length)
+{
+    for (unsigned int i = 0; i < sizeof(buttonNames) / sizeof(buttonNames[0]); i++)
+    {
+        if (tokenEquals(token, length, buttonNames[i].name))
+            return buttonNames[i].mask;
+    }
+
+    return 0;
+}
+}
+
 SwitchProController::SwitchProController(uint32_t mac0, uint32_t mac1, int port, bool switchMode)
     : Controller(mac0, mac1, port), switchMode(switchMode)
 {
@@ -12,6 +70,10 @@ SwitchProController::SwitchProController(uint32_t mac0, uint32_t mac1, int port,
 
 void SwitchProController::start(uint8_t *buffer, size_t length)
 {
+    // Optional per-controller button remapping. The file is loaded when the
+    // controller connects, so reconnect it after editing the config.
+    loadRemapConfig();
+
     if (switchMode)
     {
         // Prepare a write request to switch to standard mode
@@ -40,6 +102,8 @@ void SwitchProController::processReport(uint8_t *buffer, size_t length)
         processSimpleReport(buffer, length);
     else if (!switchMode)
         processDirectInputReport(buffer, length);
+
+    applyRemap();
 
     // The DirectInput parser logs its own reports. Also log Switch reports so
     // a "pairs but no input" case on the Switch path produces useful data.
@@ -232,8 +296,8 @@ void SwitchProController::processDirectInputReport(uint8_t *buffer, size_t lengt
 
         if (b0 & 0x01) controlData.buttons |= SCE_CTRL_CROSS;    // B
         if (b0 & 0x02) controlData.buttons |= SCE_CTRL_CIRCLE;   // A
-        if (b0 & 0x08) controlData.buttons |= SCE_CTRL_TRIANGLE; // X
-        if (b0 & 0x10) controlData.buttons |= SCE_CTRL_SQUARE;   // Y
+        if (b0 & 0x08) controlData.buttons |= SCE_CTRL_SQUARE;   // Y
+        if (b0 & 0x10) controlData.buttons |= SCE_CTRL_TRIANGLE; // X
         if (b0 & 0x40) controlData.buttons |= SCE_CTRL_L1;
         if (b0 & 0x80) controlData.buttons |= SCE_CTRL_R1;
 
@@ -259,8 +323,8 @@ void SwitchProController::processDirectInputReport(uint8_t *buffer, size_t lengt
 
         if (b0 & 0x01) controlData.buttons |= SCE_CTRL_CROSS;    // B
         if (b0 & 0x02) controlData.buttons |= SCE_CTRL_CIRCLE;   // A
-        if (b0 & 0x08) controlData.buttons |= SCE_CTRL_TRIANGLE; // X
-        if (b0 & 0x10) controlData.buttons |= SCE_CTRL_SQUARE;   // Y
+        if (b0 & 0x08) controlData.buttons |= SCE_CTRL_SQUARE;   // Y
+        if (b0 & 0x10) controlData.buttons |= SCE_CTRL_TRIANGLE; // X
         if (b0 & 0x40) controlData.buttons |= SCE_CTRL_L1;
         if (b0 & 0x80) controlData.buttons |= SCE_CTRL_R1;
 
@@ -294,6 +358,103 @@ void SwitchProController::processDirectInputReport(uint8_t *buffer, size_t lengt
     controlData.rightY = rightY;
 
     logReport(buffer);
+}
+
+void SwitchProController::loadRemapConfig()
+{
+    remapCount = 0;
+
+    SceUID fd = ksceIoOpen("ux0:data/vitacontrol-8bitdo.cfg", SCE_O_RDONLY, 0);
+    if (fd < 0)
+        return;
+
+    char buffer[512];
+    int length = ksceIoRead(fd, buffer, sizeof(buffer) - 1);
+    ksceIoClose(fd);
+
+    if (length <= 0)
+        return;
+
+    buffer[length] = '\0';
+    char *cursor = buffer;
+
+    while (*cursor && remapCount < MAX_REMAPS)
+    {
+        // Skip whitespace and blank lines
+        while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' || *cursor == '\n')
+            cursor++;
+
+        if (!*cursor)
+            break;
+
+        // Comments start with '#'
+        if (*cursor == '#')
+        {
+            while (*cursor && *cursor != '\n')
+                cursor++;
+            continue;
+        }
+
+        char *command = cursor;
+        while (*cursor && *cursor != ' ' && *cursor != '\t' && *cursor != '\r' && *cursor != '\n')
+            cursor++;
+        size_t commandLength = cursor - command;
+
+        while (*cursor == ' ' || *cursor == '\t')
+            cursor++;
+
+        char *from = cursor;
+        while (*cursor && *cursor != ' ' && *cursor != '\t' && *cursor != '\r' && *cursor != '\n')
+            cursor++;
+        size_t fromLength = cursor - from;
+
+        while (*cursor == ' ' || *cursor == '\t')
+            cursor++;
+
+        char *to = cursor;
+        while (*cursor && *cursor != ' ' && *cursor != '\t' && *cursor != '\r' && *cursor != '\n')
+            cursor++;
+        size_t toLength = cursor - to;
+
+        // Ignore anything else on the line
+        while (*cursor && *cursor != '\n')
+            cursor++;
+
+        if (tokenEquals(command, commandLength, "map"))
+        {
+            uint32_t fromMask = buttonMaskFromName(from, fromLength);
+            uint32_t toMask = buttonMaskFromName(to, toLength);
+
+            if (fromMask && toMask)
+            {
+                remaps[remapCount].from = fromMask;
+                remaps[remapCount].to = toMask;
+                remapCount++;
+            }
+        }
+    }
+}
+
+void SwitchProController::applyRemap()
+{
+    if (remapCount == 0)
+        return;
+
+    // Evaluate every mapping against the original button state so two lines
+    // can swap buttons without one mapping undoing the other.
+    uint32_t original = controlData.buttons;
+    uint32_t remapped = original;
+
+    for (int i = 0; i < remapCount; i++)
+    {
+        if (original & remaps[i].from)
+        {
+            remapped &= ~remaps[i].from;
+            remapped |= remaps[i].to;
+        }
+    }
+
+    controlData.buttons = remapped;
 }
 
 void SwitchProController::logReport(uint8_t *buffer)
