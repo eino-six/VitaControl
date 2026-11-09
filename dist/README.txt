@@ -4,8 +4,8 @@ VitaControl for 8BitDo Ultimate controllers (PS Vita)
 PRIMARY BUILD
 -------------
 File: vitacontrol.skprx
-Size: 14812 bytes
-SHA-256: 654956D1D242C57AABC6EF8CBAEBF9D52DB989DAEB5B813A0399C36043D5D45A
+Size: 14880 bytes
+SHA-256: 388ED6300B5598B2DFC502837885E7E265019078BE02F88C7AAD1B7E979888A1
 
 Tested on a physical 8BitDo Ultimate 2.4G over Bluetooth. This build
 supports BOTH:

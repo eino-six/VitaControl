@@ -378,6 +378,13 @@ void SwitchProController::loadRemapConfig()
     buffer[length] = '\0';
     char *cursor = buffer;
 
+    // Skip a UTF-8 byte-order mark written by some text editors
+    if (length >= 3 &&
+        (unsigned char)cursor[0] == 0xEF &&
+        (unsigned char)cursor[1] == 0xBB &&
+        (unsigned char)cursor[2] == 0xBF)
+        cursor += 3;
+
     while (*cursor && remapCount < MAX_REMAPS)
     {
         // Skip whitespace and blank lines
